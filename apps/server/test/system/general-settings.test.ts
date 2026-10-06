@@ -97,6 +97,42 @@ describe("general settings", () => {
     });
   });
 
+  it("persists the completed output retention and preserves it when omitted", async () => {
+    await withTestHarness(async (harness) => {
+      const put = await harness.app.request("/api/v1/settings/general", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...defaultAppSettings,
+          completedOutputRetentionDays: 365,
+        }),
+      });
+      expect(put.status).toBe(200);
+      expect(getAppSettings(harness.db).completedOutputRetentionDays).toBe(365);
+
+      const omitted = await harness.app.request("/api/v1/settings/general", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...defaultAppSettings,
+          completedOutputRetentionDays: undefined,
+        }),
+      });
+      expect(omitted.status).toBe(200);
+      expect(getAppSettings(harness.db).completedOutputRetentionDays).toBe(365);
+
+      const invalid = await harness.app.request("/api/v1/settings/general", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...defaultAppSettings,
+          completedOutputRetentionDays: 3651,
+        }),
+      });
+      expect(invalid.status).toBe(400);
+    });
+  });
+
   it("rejects payloads that are not the full general settings object", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/api/v1/settings/general", {

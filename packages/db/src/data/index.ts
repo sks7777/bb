@@ -123,6 +123,7 @@ export {
   getAiServiceSelections,
   getAppKeybindingOverrides,
   getAppSettings,
+  getCompletedOutputRetentionMs,
   getDisabledPluginProviderCatalog,
   getDisabledProviderIds,
   getPluginSafeMode,

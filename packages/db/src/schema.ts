@@ -793,6 +793,7 @@ export const events = sqliteTable(
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
+    index("events_created_at_idx").on(table.createdAt),
     uniqueIndex("events_thread_sequence_idx").on(
       table.threadId,
       table.sequence,

@@ -43,7 +43,10 @@ import {
   migrateNextLegacyImageGenerationOutput,
   pruneClosedSessions,
 } from "../src/data/sweeps.js";
-import { COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS } from "../src/retained-event-output.js";
+import {
+  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
+  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+} from "../src/retained-event-output.js";
 import {
   deleteExpiredRetainedEventOutputs,
   hydrateRetainedEventOutputRows,
@@ -1387,12 +1390,11 @@ describe("slow query index plans", () => {
     if (!stored) {
       throw new Error("Expected retained expiry event");
     }
-    const expiredAtOrBefore = Number.MAX_SAFE_INTEGER;
     logger.clear();
 
     deleteExpiredRetainedEventOutputs(db, {
-      expiredAtOrBefore,
       limit: 1,
+      now: Number.MAX_SAFE_INTEGER,
     });
 
     const selection = findOnlyDebugLog({
@@ -1400,13 +1402,16 @@ describe("slow query index plans", () => {
       predicate: (fields) =>
         fields.operation === "all" &&
         fields.sql.includes('from "retained_event_outputs"') &&
-        fields.sql.includes('order by "retained_event_outputs"."expires_at"'),
+        fields.sql.includes('order by "events"."created_at"'),
     });
     assertEmittedQueryPlanUsesIndex({
       db,
       debugLog: selection,
-      indexName: "retained_event_outputs_expiry_idx",
-      params: [expiredAtOrBefore, 1],
+      indexName: "events_created_at_idx",
+      params: [
+        Number.MAX_SAFE_INTEGER - COMPLETED_EVENT_OUTPUT_RETENTION_MS,
+        1,
+      ],
     });
     const deletion = findOnlyDebugLog({
       logger,

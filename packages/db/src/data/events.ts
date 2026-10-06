@@ -62,6 +62,7 @@ import {
 } from "../schema.js";
 import { createEventId } from "../ids.js";
 import { COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS } from "../retained-event-output.js";
+import { getCompletedOutputRetentionMs } from "./app-settings.js";
 import { truncatedEventDataColumn } from "./event-output-truncation.js";
 import { bumpThreadEventRewriteGeneration } from "./event-rewrite-generation.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
@@ -364,6 +365,7 @@ interface InsertStoredEventRowArgs {
   data: string;
   environmentId: string | null;
   itemId: string | null;
+  retentionMs: number;
   itemKind: ThreadEventItemType | null;
   parentToolCallId: string | null;
   providerThreadId: string | null;
@@ -388,6 +390,7 @@ function insertStoredEventRow(
     createdAt: args.createdAt,
     data: args.data,
     itemKind: args.itemKind,
+    retentionMs: args.retentionMs,
     type: args.type,
   });
   const insert =
@@ -441,6 +444,7 @@ export function insertEvents(
     };
   }
 
+  const retentionMs = getCompletedOutputRetentionMs(db);
   const eventTypesByThreadId = new Map<string, Set<ThreadEventType>>();
   const result = db.transaction(
     (tx) => {
@@ -460,6 +464,7 @@ export function insertEvents(
           environmentId: input.environmentId ?? null,
           itemId: input.itemId,
           itemKind: input.itemKind,
+          retentionMs,
           parentToolCallId: input.parentToolCallId,
           providerThreadId: input.providerThreadId ?? null,
           scopeKind: input.scope.kind,
@@ -747,6 +752,7 @@ export function appendDaemonEventsInTransaction(
     };
   }
 
+  const retentionMs = getCompletedOutputRetentionMs(db);
   const threadIds = [...new Set(eventInputs.map((input) => input.threadId))];
   const highWaterMarks = getHighWaterMarks(db, threadIds);
   const nextSequencesByThreadId = new Map(
@@ -817,6 +823,7 @@ export function appendDaemonEventsInTransaction(
       itemKind: input.itemKind,
       parentToolCallId: input.parentToolCallId,
       providerThreadId: input.providerThreadId,
+      retentionMs,
       scopeKind: input.scope.kind,
       sequence,
       threadId: input.threadId,
@@ -871,6 +878,7 @@ export function copyStoredThreadEventsInTransaction(
   if (args.rows.length === 0) {
     return 0;
   }
+  const retentionMs = getCompletedOutputRetentionMs(db);
   const highWaterMarks = getHighWaterMarks(db, [args.targetThreadId]);
   let sequence = (highWaterMarks[args.targetThreadId] ?? 0) + 1;
   const now = Date.now();
@@ -885,6 +893,7 @@ export function copyStoredThreadEventsInTransaction(
       itemKind: row.itemKind,
       parentToolCallId: row.parentToolCallId,
       providerThreadId: row.providerThreadId,
+      retentionMs,
       scopeKind: row.scopeKind,
       sequence,
       threadId: args.targetThreadId,
@@ -896,6 +905,7 @@ export function copyStoredThreadEventsInTransaction(
     }
     copyRetainedEventOutput(db, {
       copiedAt: now,
+      retentionMs,
       sourceEventId: row.id,
       targetEventId: insertResult.id,
     });
@@ -950,6 +960,7 @@ export function appendStoredThreadEventsInTransaction(
   }
 
   const now = Date.now();
+  const retentionMs = getCompletedOutputRetentionMs(db);
   const threadIds = [...new Set(eventArgs.map((args) => args.threadId))];
   const highWaterMarks = getHighWaterMarks(db, threadIds);
   const nextSequencesByThreadId = new Map(
@@ -987,6 +998,7 @@ export function appendStoredThreadEventsInTransaction(
       itemKind: itemFields.itemKind,
       parentToolCallId: itemFields.parentToolCallId,
       providerThreadId: args.providerThreadId ?? null,
+      retentionMs,
       scopeKind: args.scope.kind,
       sequence,
       threadId: args.threadId,

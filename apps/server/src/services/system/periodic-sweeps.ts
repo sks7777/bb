@@ -456,8 +456,8 @@ async function runRetainedEventOutputExpirySweep(
         "sweep:retained-event-output-expiry:delete",
         () =>
           deleteExpiredRetainedEventOutputs(deps.db, {
-            expiredAtOrBefore: now,
             limit: RETAINED_EVENT_OUTPUT_EXPIRY_BATCH_SIZE,
+            now,
           }),
       );
       for (const threadId of threadIds) {

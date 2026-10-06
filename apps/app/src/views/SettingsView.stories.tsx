@@ -178,6 +178,8 @@ function GeneralSettingsStory({
   return (
     <>
       <GeneralSettingsSection
+        completedOutputRetentionDays={7}
+        onCompletedOutputRetentionDaysChange={() => {}}
         showGitChanges={state.showGitChanges}
         onShowGitChangesChange={state.setShowGitChanges}
         confirmThreadArchive={state.confirmThreadArchive}

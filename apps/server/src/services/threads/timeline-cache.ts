@@ -79,6 +79,7 @@ export interface ThreadTimelineCacheKeyArgs {
   summaryOnly: boolean;
   includeDiagnosticOperations: boolean;
   completedTurnDisplay: CompletedTurnDisplay;
+  completedOutputRetentionMs: number;
 }
 
 function pageKeyPart(page: ThreadTimelinePageRequest): string {
@@ -100,6 +101,7 @@ export function buildThreadTimelineParamsKey(
     args.summaryOnly ? "1" : "0",
     args.includeDiagnosticOperations ? "1" : "0",
     args.completedTurnDisplay,
+    args.completedOutputRetentionMs,
   ].join("|");
 }
 

@@ -1,7 +1,8 @@
-import { turnScope } from "@bb/domain";
+import { defaultAppSettings, turnScope } from "@bb/domain";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createConnection, type DbConnection } from "../../src/connection.js";
+import { setAppSettings } from "../../src/data/app-settings.js";
 import { listStoredEventRows } from "../../src/data/events.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
@@ -347,6 +348,45 @@ describe("completed event output migration", () => {
     expect(
       JSON.parse(stored.data).item.truncation.aggregatedOutput.truncatedAt,
     ).toBe(createdAt + COMPLETED_EVENT_OUTPUT_RETENTION_MS);
+    db.$client.close();
+  });
+
+  it("retains a legacy output when the setting extends the default retention", () => {
+    const migratedAt = 1_800_000_000_000;
+    const createdAt = migratedAt - 30 * 24 * 60 * 60_000;
+    const output = "extended-" + "e".repeat(40_000);
+    const { db, thread } = setup();
+    setAppSettings(db, {
+      ...defaultAppSettings,
+      completedOutputRetentionDays: 365,
+    });
+    insertLegacyOutput({
+      createdAt,
+      db,
+      eventId: "evt_extended_retention",
+      itemKind: "commandExecution",
+      output,
+      outputPath: "aggregatedOutput",
+      sequence: 1,
+      threadId: thread.id,
+    });
+
+    expect(migrateCommandOutput(db, migratedAt)).toMatchObject({
+      action: "migrated",
+      migratedRows: 1,
+      retained: true,
+    });
+    const [sidecar] = db.select().from(retainedEventOutputs).all();
+    expect(sidecar?.expiresAt).toBe(createdAt + 365 * 24 * 60 * 60_000);
+    const [stored] = listStoredEventRows(db, { threadId: thread.id });
+    const [hydrated] = hydrateRetainedEventOutputRows(
+      db,
+      stored ? [stored] : [],
+      migratedAt,
+    );
+    expect(hydrated && readOutput(hydrated.data, "aggregatedOutput")).toBe(
+      output,
+    );
     db.$client.close();
   });
 

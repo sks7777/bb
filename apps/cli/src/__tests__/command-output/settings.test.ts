@@ -280,6 +280,46 @@ describe("bb settings commands", () => {
     });
   });
 
+  it("sets the completed output retention in days", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.general.$put": put,
+    });
+
+    await runCommand(
+      ["settings", "general", "completedOutputRetentionDays", "365"],
+      register,
+    );
+
+    expect(put).toHaveBeenCalledWith({
+      json: { ...defaultAppSettings, completedOutputRetentionDays: 365 },
+    });
+
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.general.$put": vi.fn(async ({ json }) => json),
+    });
+    await expect(
+      runCommand(
+        ["settings", "general", "completedOutputRetentionDays", "0"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    await expect(
+      runCommand(
+        ["settings", "general", "completedOutputRetentionDays", "3651"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+  });
+
   it("rejects an unknown general setting key", async () => {
     stubServerApi({
       "v1.system.config.$get": vi.fn(async () => ({

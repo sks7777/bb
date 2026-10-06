@@ -1,4 +1,4 @@
-import { turnScope } from "@bb/domain";
+import { defaultAppSettings, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   copyStoredThreadEventsInTransaction,
@@ -6,6 +6,7 @@ import {
   listStoredEventRows,
 } from "../../src/data/events.js";
 import type { InsertEventInput } from "../../src/data/events.js";
+import { setAppSettings } from "../../src/data/app-settings.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import {
@@ -516,8 +517,8 @@ describe("retained completed-event outputs", () => {
 
     expect(
       deleteExpiredRetainedEventOutputs(db, {
-        expiredAtOrBefore: now + COMPLETED_EVENT_OUTPUT_RETENTION_MS,
         limit: 1,
+        now: now + COMPLETED_EVENT_OUTPUT_RETENTION_MS,
       }),
     ).toEqual({ deleted: 1, threadIds: [source.id] });
     expect(listStoredEventRows(db, { threadId: source.id })).toEqual(previews);
@@ -530,13 +531,84 @@ describe("retained completed-event outputs", () => {
     db.$client.close();
   });
 
-  it("looks up retained outputs for a thousand rows in one query", () => {
+  it("extends and shrinks retention from the setting for reads and sweeps", () => {
+    const now = 1_800_000_000_000;
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const { db, source } = setup();
+    const output = "z".repeat(50_000);
+    insertEvents(
+      db,
+      noopNotifier,
+      [1].map((sequence) => ({
+        createdAt: now,
+        data: JSON.stringify({
+          item: {
+            aggregatedOutput: output,
+            id: `command-${sequence}`,
+            type: "commandExecution",
+          },
+        }),
+        itemId: `command-${sequence}`,
+        itemKind: "commandExecution",
+        parentToolCallId: null,
+        scope: turnScope("turn-1"),
+        sequence,
+        threadId: source.id,
+        type: "item/completed",
+      })),
+    );
+    const [row] = listStoredEventRows(db, { threadId: source.id });
+
+    setAppSettings(db, {
+      ...defaultAppSettings,
+      completedOutputRetentionDays: 365,
+    });
+    const [extended] = hydrateRetainedEventOutputRows(
+      db,
+      [row],
+      now + COMPLETED_EVENT_OUTPUT_RETENTION_MS + 1,
+    );
+    expect(extended && readOutput(extended.data, "aggregatedOutput")).toBe(
+      output,
+    );
+    expect(
+      deleteExpiredRetainedEventOutputs(db, {
+        limit: 10,
+        now: now + COMPLETED_EVENT_OUTPUT_RETENTION_MS + 1,
+      }),
+    ).toEqual({ deleted: 0, threadIds: [] });
+
+    setAppSettings(db, {
+      ...defaultAppSettings,
+      completedOutputRetentionDays: 1,
+    });
+    const [shrunk] = hydrateRetainedEventOutputRows(
+      db,
+      [row],
+      now + 2 * 24 * 60 * 60_000,
+    );
+    expect(shrunk?.data).toBe(row.data);
+    expect(
+      deleteExpiredRetainedEventOutputs(db, {
+        limit: 10,
+        now: now + 2 * 24 * 60 * 60_000,
+      }),
+    ).toEqual({ deleted: 1, threadIds: [source.id] });
+    db.$client.close();
+  });
+
+  it("looks up retained outputs for a thousand rows in one batch query", () => {
     const now = 1_800_000_000_000;
     let queries = 0;
+    let retainedOutputQueries = 0;
     const { db, source } = setup({
       slowQueryLogger: {
-        info() {
+        info(query) {
           queries += 1;
+          if (query.sql.includes('"retained_event_outputs"')) {
+            retainedOutputQueries += 1;
+          }
         },
       },
       slowQueryThresholdMs: 0,
@@ -572,8 +644,9 @@ describe("retained completed-event outputs", () => {
     expect(readOutput(stored.data, "aggregatedOutput")).not.toBe(output);
 
     queries = 0;
+    retainedOutputQueries = 0;
     const hydrated = hydrateRetainedEventOutputRows(db, rows, now);
-    expect(queries).toBe(1);
+    expect(retainedOutputQueries).toBe(1);
     expect(
       readOutput(
         hydrated[rows.indexOf(stored)]?.data ?? "",
@@ -581,7 +654,7 @@ describe("retained completed-event outputs", () => {
       ),
     ).toBe(output);
 
-    queries = 0;
+    retainedOutputQueries = 0;
     expect(
       hydrateRetainedEventOutputRowsWithinDataByteLimit(
         db,
@@ -590,7 +663,7 @@ describe("retained completed-event outputs", () => {
         now,
       ),
     ).toEqual(hydrated);
-    expect(queries).toBe(2);
+    expect(retainedOutputQueries).toBe(2);
 
     expect(
       hydrateRetainedEventOutputRows(

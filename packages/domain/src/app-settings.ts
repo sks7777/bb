@@ -17,6 +17,7 @@ export const appSettingsSchema = z
   .object({
     showKeyboardHints: z.boolean(),
     showGitChanges: z.boolean(),
+    completedOutputRetentionDays: z.number().int().min(1).max(3650),
     steerActiveThreadOnEnter: z.boolean(),
     confirmThreadArchive: z.boolean(),
     showDiagnosticEvents: z.boolean(),
@@ -50,6 +51,7 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 export const defaultAppSettings: AppSettings = {
   showKeyboardHints: true,
+  completedOutputRetentionDays: 7,
   showGitChanges: true,
   steerActiveThreadOnEnter: true,
   confirmThreadArchive: true,
@@ -70,6 +72,7 @@ export const disabledProviderIdsSchema = z.array(z.string().min(1));
 
 export const appSettingsUpdateSchema = z.union([
   appSettingsSchema.extend({
+    completedOutputRetentionDays: z.number().int().min(1).max(3650).optional(),
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     confirmThreadArchive: z.boolean().optional(),
@@ -77,6 +80,7 @@ export const appSettingsUpdateSchema = z.union([
     showUnhandledProviderEvents: z.boolean().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
+    completedOutputRetentionDays: z.number().int().min(1).max(3650).optional(),
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     confirmThreadArchive: z.boolean().optional(),
