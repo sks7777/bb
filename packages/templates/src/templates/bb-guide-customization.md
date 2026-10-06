@@ -150,6 +150,15 @@ child threads without the confirmation popup. The toast still offers Undo.
 The setting applies to all connected app clients; CLI and SDK archive calls
 remain non-interactive.
 
+Settings → General includes `completedOutputRetentionDays`, which defaults to
+7. It sets how many days (1–3650) full command and tool outputs stay retrievable
+in older threads: full outputs over 32 KB are stored next to the event and
+removed by a background sweep after this period, while truncated previews and
+everything else in the thread remain. The value applies when it changes —
+raising it restores outputs that are still on disk, lowering it removes them at
+the next sweep. Set `bb settings general completedOutputRetentionDays 365` to
+keep full outputs for a year.
+
 Settings → General also includes `streamerMode`, which defaults to false. Turn
 it on to hide every `customModels` entry from `~/.bb/config.json` in all model
 lists (pickers, `bb provider models`, and the SDK) during a screen share. The

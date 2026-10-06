@@ -6,6 +6,7 @@ import {
   type RetainedEventOutputTarget,
 } from "../retained-event-output.js";
 import { events, maintenanceScanCursors } from "../schema.js";
+import { getCompletedOutputRetentionMs } from "./app-settings.js";
 import { bumpThreadEventRewriteGeneration } from "./event-rewrite-generation.js";
 import {
   insertPreparedRetainedEventOutput,
@@ -111,6 +112,7 @@ interface CompletedEventOutputMigrationStrategy {
   prepare: (
     candidate: CompletedEventOutputCandidateRow,
     args: MigrateNextCompletedEventItemOutputArgs,
+    retentionMs: number,
   ) => PreparedCompletedEventOutputData;
   windowPolicy: string;
 }
@@ -521,11 +523,12 @@ const COMPLETED_EVENT_ITEM_OUTPUT_MIGRATION_STRATEGY: CompletedEventOutputMigrat
     findCandidate: findCompletedEventOutputCandidate,
     listScanRows: listCompletedEventOutputScanRows,
     missingScanRowError: "Expected completed output migration scan row",
-    prepare: (candidate, args) =>
+    prepare: (candidate, args, retentionMs) =>
       prepareCompletedEventOutputData({
         createdAt: candidate.created_at,
         data: candidate.data,
         itemKind: args.itemKind,
+        retentionMs,
         type: "item/completed",
       }),
     windowPolicy: COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
@@ -539,10 +542,11 @@ const LEGACY_IMAGE_GENERATION_OUTPUT_MIGRATION_STRATEGY: CompletedEventOutputMig
     findCandidate: findLegacyImageGenerationCandidate,
     listScanRows: listLegacyImageGenerationScanRows,
     missingScanRowError: "Expected legacy image generation migration scan row",
-    prepare: (candidate) =>
+    prepare: (candidate, _args, retentionMs) =>
       prepareLegacyImageGenerationOutputData({
         createdAt: candidate.created_at,
         data: candidate.data,
+        retentionMs,
       }),
     windowPolicy: LEGACY_IMAGE_GENERATION_MIGRATION_WINDOW_POLICY,
   };
@@ -555,6 +559,7 @@ function migrateNextCompletedEventOutput(
   if (args.limit <= 0) {
     return emptyCompletedEventOutputMigrationResult("idle", 0);
   }
+  const retentionMs = getCompletedOutputRetentionMs(db);
   const state = getCompletedEventOutputScanState(
     db,
     args,
@@ -643,7 +648,7 @@ function migrateNextCompletedEventOutput(
     return emptyCompletedEventOutputMigrationResult("scanned", scanRows);
   }
 
-  const prepared = strategy.prepare(candidate, args);
+  const prepared = strategy.prepare(candidate, args, retentionMs);
   if (!prepared.retainedOutput) {
     db.transaction(
       (tx) =>

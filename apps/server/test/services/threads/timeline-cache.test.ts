@@ -58,6 +58,7 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   summaryOnly: false,
   includeDiagnosticOperations: false,
   completedTurnDisplay: "collapse",
+  completedOutputRetentionMs: 604_800_000,
 };
 
 describe("createThreadTimelineCache", () => {

@@ -135,6 +135,18 @@ so they carry over between navigation plugins.
   applies to all connected app clients. CLI and SDK archive calls remain
   non-interactive.
 
+## Full output retention
+
+- `completedOutputRetentionDays` defaults to 7. Set it with
+  `bb settings general completedOutputRetentionDays <days>`; bb accepts whole
+  days from 1 to 3650.
+- It sets how many days full command and tool outputs stay retrievable in older
+  threads. Full outputs over 32 KB are stored next to the event and removed by a
+  background sweep after this period; truncated previews and everything else in
+  the thread remain.
+- The value applies when it changes: raising it restores outputs that are still
+  on disk, lowering it removes them at the next sweep.
+
 ## Streamer mode
 
 - `streamerMode` defaults to false. Set it with

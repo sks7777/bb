@@ -2,6 +2,7 @@ import { extractThreadContextWindowUsage } from "@bb/thread-view";
 import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import {
   getAppSettings,
+  getCompletedOutputRetentionMs,
   getDatabaseDataVersion,
   getThreadPluginMetadata,
   patchThreadPluginMetadata,
@@ -313,6 +314,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       summaryOnly,
       includeDiagnosticOperations,
       completedTurnDisplay,
+      completedOutputRetentionMs: getCompletedOutputRetentionMs(deps.db),
     };
     const full = timelineCache.getOrBuild(
       thread.id,

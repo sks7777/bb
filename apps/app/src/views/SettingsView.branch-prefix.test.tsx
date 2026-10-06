@@ -12,6 +12,8 @@ import { GeneralSettingsSection, PrivacySettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
+  completedOutputRetentionDays?: number | undefined;
+  onCompletedOutputRetentionDaysChange?: (days: number) => void;
   confirmThreadArchive?: boolean;
   onConfirmThreadArchiveChange?: (enabled: boolean) => void;
   desktopBrowserAvailable?: boolean;
@@ -23,6 +25,14 @@ function renderSection(overrides?: {
   return render(
     <>
       <GeneralSettingsSection
+        completedOutputRetentionDays={
+          overrides && "completedOutputRetentionDays" in overrides
+            ? overrides.completedOutputRetentionDays
+            : 7
+        }
+        onCompletedOutputRetentionDaysChange={
+          overrides?.onCompletedOutputRetentionDaysChange ?? vi.fn()
+        }
         showGitChanges={true}
         onShowGitChangesChange={vi.fn()}
         confirmThreadArchive={overrides?.confirmThreadArchive ?? true}
@@ -116,6 +126,41 @@ describe("new branch prefix setting", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(input.value).toBe("bb/");
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+function fullOutputRetentionInput() {
+  const input = screen.getByLabelText("Full output retention");
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error("Full output retention control is not an input");
+  }
+  return input;
+}
+
+describe("full output retention setting", () => {
+  it("saves a valid retention on Enter", () => {
+    const onChange = vi.fn();
+    renderSection({ onCompletedOutputRetentionDaysChange: onChange });
+    const input = fullOutputRetentionInput();
+    fireEvent.change(input, { target: { value: "365" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith(365);
+  });
+
+  it("refuses an out-of-range retention and restores the saved value", () => {
+    const onChange = vi.fn();
+    renderSection({ onCompletedOutputRetentionDaysChange: onChange });
+    const input = fullOutputRetentionInput();
+    fireEvent.change(input, { target: { value: "3651" } });
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.blur(input);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(input.value).toBe("7");
+  });
+
+  it("hides the control when the server does not provide the field", () => {
+    renderSection({ completedOutputRetentionDays: undefined });
+    expect(screen.queryByLabelText("Full output retention")).toBeNull();
   });
 });
 

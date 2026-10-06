@@ -9,12 +9,12 @@ import type { DbQueryConnection } from "../connection.js";
 import {
   COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
   COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
   RETAINED_EVENT_OUTPUT_TARGETS,
   type RetainedEventOutputPath,
   type RetainedEventOutputTarget,
 } from "../retained-event-output.js";
+import { getCompletedOutputRetentionMs } from "./app-settings.js";
 import { events, retainedEventOutputs } from "../schema.js";
 import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
 
@@ -42,6 +42,7 @@ interface PrepareCompletedEventOutputDataArgs {
   createdAt: number;
   data: string;
   itemKind: ThreadEventItemType | null;
+  retentionMs: number;
   type: ThreadEventType;
 }
 
@@ -52,6 +53,7 @@ interface InsertPreparedRetainedEventOutputArgs {
 
 interface CopyRetainedEventOutputArgs {
   copiedAt: number;
+  retentionMs: number;
   sourceEventId: string;
   targetEventId: string;
 }
@@ -75,8 +77,8 @@ interface RetainedEventOutputSizeRow {
 }
 
 interface DeleteExpiredRetainedEventOutputsArgs {
-  expiredAtOrBefore: number;
   limit: number;
+  now: number;
 }
 
 export interface DeleteExpiredRetainedEventOutputsResult {
@@ -117,6 +119,7 @@ function prepareRetainedOutputData(args: {
   item: Record<string, unknown>;
   outputPath: RetainedEventOutputPath;
   payload: Record<string, unknown>;
+  retentionMs: number;
 }): PreparedCompletedEventOutputData {
   const value = args.item[args.outputPath];
   if (
@@ -133,7 +136,7 @@ function prepareRetainedOutputData(args: {
     return { data: args.data, retainedOutput: null };
   }
 
-  const expiresAt = args.createdAt + COMPLETED_EVENT_OUTPUT_RETENTION_MS;
+  const expiresAt = args.createdAt + args.retentionMs;
   const truncation = isJsonObject(existingTruncation) ? existingTruncation : {};
   const preview = truncateOutput(value);
   args.item[args.outputPath] = preview.value;
@@ -186,12 +189,14 @@ export function prepareCompletedEventOutputData(
     item,
     outputPath: target.outputPath,
     payload,
+    retentionMs: args.retentionMs,
   });
 }
 
 export function prepareLegacyImageGenerationOutputData(args: {
   createdAt: number;
   data: string;
+  retentionMs: number;
 }): PreparedCompletedEventOutputData {
   let payload: unknown;
   try {
@@ -209,6 +214,7 @@ export function prepareLegacyImageGenerationOutputData(args: {
     item: imageGeneration.item,
     outputPath: "result",
     payload,
+    retentionMs: args.retentionMs,
   });
 }
 
@@ -235,12 +241,13 @@ export function copyRetainedEventOutput(
     (event_id, output_path, value, expires_at)
     SELECT
       ${args.targetEventId},
-      output_path,
-      value,
-      expires_at
-    FROM retained_event_outputs
-    WHERE event_id = ${args.sourceEventId}
-      AND expires_at > ${args.copiedAt}`);
+      source.output_path,
+      source.value,
+      source.expires_at
+    FROM retained_event_outputs AS source
+    JOIN events ON events.id = source.event_id
+    WHERE source.event_id = ${args.sourceEventId}
+      AND events.created_at > ${args.copiedAt - args.retentionMs}`);
 }
 
 function decodeRetainedOutputValue(encodedValue: string): string {
@@ -309,6 +316,7 @@ export function hydrateRetainedEventOutputRows<
   if (rows.length === 0) {
     return [];
   }
+  const createdAfter = now - getCompletedOutputRetentionMs(db);
   const outputs = queryInSqliteVariableBatches({
     dedupeKey: (eventId) => eventId,
     fixedVariableCount: 1,
@@ -322,10 +330,11 @@ export function hydrateRetainedEventOutputRows<
           outputPath: retainedEventOutputs.outputPath,
         })
         .from(retainedEventOutputs)
+        .innerJoin(events, eq(events.id, retainedEventOutputs.eventId))
         .where(
           and(
             inArray(retainedEventOutputs.eventId, [...batch]),
-            gt(retainedEventOutputs.expiresAt, now),
+            gt(events.createdAt, createdAfter),
           ),
         )
         .all(),
@@ -345,7 +354,7 @@ export function hydrateRetainedEventOutputRows<
 function listRetainedEventOutputSizes(
   db: DbQueryConnection,
   eventIds: readonly string[],
-  now: number,
+  createdAfter: number,
 ): RetainedEventOutputSizeRow[] {
   return queryInSqliteVariableBatches({
     dedupeKey: (eventId) => eventId,
@@ -360,10 +369,11 @@ function listRetainedEventOutputSizes(
           valueBytes: sql<number>`octet_length(${retainedEventOutputs.value})`,
         })
         .from(retainedEventOutputs)
+        .innerJoin(events, eq(events.id, retainedEventOutputs.eventId))
         .where(
           and(
             inArray(retainedEventOutputs.eventId, [...batch]),
-            gt(retainedEventOutputs.expiresAt, now),
+            gt(events.createdAt, createdAfter),
           ),
         )
         .all(),
@@ -434,7 +444,11 @@ export function canHydrateRetainedEventOutputRowsWithinDataByteLimit<
     rowCountsByEventId.set(row.id, (rowCountsByEventId.get(row.id) ?? 0) + 1);
   }
   const eventIds = [...rowCountsByEventId.keys()];
-  const sizes = listRetainedEventOutputSizes(db, eventIds, now);
+  const sizes = listRetainedEventOutputSizes(
+    db,
+    eventIds,
+    now - getCompletedOutputRetentionMs(db),
+  );
   if (sizes.length === 0) {
     return true;
   }
@@ -472,6 +486,7 @@ export function deleteExpiredRetainedEventOutputs(
   if (args.limit <= 0) {
     return { deleted: 0, threadIds: [] };
   }
+  const createdAtOrBefore = args.now - getCompletedOutputRetentionMs(db);
   const rows = db
     .select({
       eventId: retainedEventOutputs.eventId,
@@ -479,8 +494,8 @@ export function deleteExpiredRetainedEventOutputs(
     })
     .from(retainedEventOutputs)
     .innerJoin(events, eq(events.id, retainedEventOutputs.eventId))
-    .where(lte(retainedEventOutputs.expiresAt, args.expiredAtOrBefore))
-    .orderBy(retainedEventOutputs.expiresAt, retainedEventOutputs.eventId)
+    .where(lte(events.createdAt, createdAtOrBefore))
+    .orderBy(events.createdAt, retainedEventOutputs.eventId)
     .limit(args.limit)
     .all();
   if (rows.length === 0) {

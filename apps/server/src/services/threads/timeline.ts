@@ -49,6 +49,7 @@ import { threadConversationOutlineItemSchema } from "@bb/server-contract";
 import {
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
+  getCompletedOutputRetentionMs,
   hydrateRetainedEventOutputRows,
   hydrateRetainedEventOutputRowsWithinDataByteLimit,
   getEnvironment,
@@ -281,9 +282,10 @@ function retainedOutputPreviewsByCallId(
     "available" | "detail-limit"
   >,
   now: number,
+  retentionMs: number,
 ): ReadonlyMap<string, TimelineOutputPreview> {
   const previews = new Map<string, TimelineOutputPreview>();
-  for (const { event } of events) {
+  for (const { event, meta } of events) {
     if (event.type !== "item/completed") {
       continue;
     }
@@ -298,7 +300,9 @@ function retainedOutputPreviewsByCallId(
     if (truncation !== undefined) {
       previews.set(item.id, {
         experimental_fullOutputAvailability:
-          truncation.truncatedAt > now ? availablePreview : "retention-expired",
+          meta.createdAt + retentionMs > now
+            ? availablePreview
+            : "retention-expired",
         totalChars: truncation.originalLength,
       });
     } else {
@@ -315,11 +319,13 @@ export function applyRetainedOutputPreviews(
     TimelineOutputPreview["experimental_fullOutputAvailability"],
     "available" | "detail-limit"
   >,
+  retentionMs: number,
 ): TimelineRow[] {
   const previews = retainedOutputPreviewsByCallId(
     events,
     availablePreview,
     Date.now(),
+    retentionMs,
   );
   if (previews.size === 0) {
     return [...rows];
@@ -1416,6 +1422,7 @@ function buildThreadTimelineInternal(
         },
       }),
   );
+  const completedOutputRetentionMs = getCompletedOutputRetentionMs(db);
   const projectedTimelineRows = applyRetainedOutputPreviews(
     orderTimelineRowsUsingContext(
       timeline.rows.filter(
@@ -1433,6 +1440,7 @@ function buildThreadTimelineInternal(
     ),
     decodedRawEvents,
     "available",
+    completedOutputRetentionMs,
   );
   profile.projectedRowCount = projectedTimelineRows.length;
   const paginatedTimeline = measureThreadTimelineStage(
@@ -2123,6 +2131,7 @@ function buildTimelineTurnSummaryDetailsPage(
         children.rows,
         projectionEvents,
         "detail-limit",
+        getCompletedOutputRetentionMs(db),
       ),
       contentCursor?.beforeLeaf,
       1_500,

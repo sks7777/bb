@@ -18,6 +18,7 @@ import {
 } from "@bb/server-contract";
 import { prependOlderTimelineRows } from "@bb/client-core";
 import {
+  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   prepareCompletedEventOutputData,
   insertPreparedRetainedEventOutput,
   RETAINED_EVENT_OUTPUT_TARGETS,
@@ -64,6 +65,7 @@ describe.skipIf(!corpusAvailable())(
                   RETAINED_EVENT_OUTPUT_TARGETS.find(
                     (target) => target.itemKind === event.itemKind,
                   )?.itemKind ?? null,
+                retentionMs: COMPLETED_EVENT_OUTPUT_RETENTION_MS,
               });
               if (prepared.retainedOutput !== null) {
                 update.run(prepared.data, event.id);
@@ -137,6 +139,7 @@ describe.skipIf(!corpusAvailable())(
                       canonical.rows,
                       events,
                       "available",
+                      COMPLETED_EVENT_OUTPUT_RETENTION_MS,
                     ),
                   },
                   32_000,

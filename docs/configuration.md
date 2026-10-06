@@ -388,6 +388,16 @@ preference applies to all connected app clients. Set it with
 `bb.sdk.system.updateGeneralSettings` using `confirmThreadArchive`.
 CLI and SDK archive operations remain non-interactive.
 
+The "Full output retention" field in Settings → General → Threads & editing
+sets how many days (1–3650) full command and tool outputs stay retrievable in
+older threads. Full outputs over 32 KB are stored next to the event and removed
+by a background sweep after this period; truncated previews and everything else
+in the thread remain. It defaults to 7 days. The value applies when it changes:
+raising it restores outputs that are still on disk, lowering it removes them at
+the next sweep. Set it with
+`bb settings general completedOutputRetentionDays 365` or
+`bb.sdk.system.updateGeneralSettings` using `completedOutputRetentionDays`.
+
 The "Streamer mode" toggle in Settings → General hides every `customModels`
 entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
 `bb provider models`, and `sdk.providers.models`. Turn it on before a screen
@@ -941,29 +951,29 @@ schema, a default, and a revision that increments on every write. Writes name
 the revision they expect and receive `409 ui_preference_conflict` when another
 client wrote first, so a stale window cannot silently clobber a newer value.
 
-| Key                                  | Value                                                                                     |
-| ------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `sidebar.organizationMode`           | `project`, `chronological`, or `machine`                                                  |
-| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                                                                |
-| `sidebar.chronologicalSort`          | `updated`, `created`, `alpha`, or `none`                                                  |
-| `sidebar.sectionOrder`               | Section id list for **By project**                                                        |
-| `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                          |
-| `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                        |
-| `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin |
-| `sidebar.collapsedSections`          | Collapsed built-in sections (`pinned`, `threads`)                                         |
-| `sidebar.collapsedProjects`          | Collapsed project ids                                                                     |
-| `sidebar.collapsedThreads`           | Thread ids whose children are collapsed                                                   |
-| `sidebar.collapsedEnvironments`      | Collapsed environment ids                                                                 |
-| `sidebar.collapsedThreadSections`    | Collapsed thread section ids                                                              |
-| `sidebar.collapsedMachines`          | Collapsed machine ids                                                                     |
-| `sidebar.footerOrder`                | Footer action order                                                                       |
-| `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                            |
-| `sidebar.pluginPanelOrder`           | Navigation entry order                                                                    |
-| `sidebar.visiblePluginPanels`        | Navigation entries shown, or `null` for every entry                                       |
-| `sidebar.navigationProvider`         | Plugin key or `__automatic__` (default)                                                   |
-| `sidebar.headerProvider`             | Plugin key, or `__builtin__` for bb's header only                                         |
-| `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                   |
-| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `forks`, `threadStorage`)                   |
+| Key                                  | Value                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `sidebar.organizationMode`           | `project`, `chronological`, or `machine`                                                         |
+| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                                                                       |
+| `sidebar.chronologicalSort`          | `updated`, `created`, `alpha`, or `none`                                                         |
+| `sidebar.sectionOrder`               | Section id list for **By project**                                                               |
+| `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                                 |
+| `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                               |
+| `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin        |
+| `sidebar.collapsedSections`          | Collapsed built-in sections (`pinned`, `threads`)                                                |
+| `sidebar.collapsedProjects`          | Collapsed project ids                                                                            |
+| `sidebar.collapsedThreads`           | Thread ids whose children are collapsed                                                          |
+| `sidebar.collapsedEnvironments`      | Collapsed environment ids                                                                        |
+| `sidebar.collapsedThreadSections`    | Collapsed thread section ids                                                                     |
+| `sidebar.collapsedMachines`          | Collapsed machine ids                                                                            |
+| `sidebar.footerOrder`                | Footer action order                                                                              |
+| `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                                   |
+| `sidebar.pluginPanelOrder`           | Navigation entry order                                                                           |
+| `sidebar.visiblePluginPanels`        | Navigation entries shown, or `null` for every entry                                              |
+| `sidebar.navigationProvider`         | Plugin key or `__automatic__` (default)                                                          |
+| `sidebar.headerProvider`             | Plugin key, or `__builtin__` for bb's header only                                                |
+| `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                          |
+| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `forks`, `threadStorage`) |
 
 The sidebar thread list defaults to `__automatic__`: the first installed thread list
 plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the

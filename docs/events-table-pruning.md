@@ -6,6 +6,15 @@ transaction, including when history was truncated while cleanup was paused.
 Sequence allocation and provider-session recovery continue to read stored events;
 there is no bookmark table.
 
+Full outputs of completed command, tool, web-fetch, web-search, and
+image-generation events over 32 KB are stored in the `retained_event_outputs`
+sidecar table. Their availability follows the `completedOutputRetentionDays`
+general setting (default 7 days): a background sweep deletes sidecars whose
+event is older than the setting, and timeline reads treat an event older than
+the setting as retention-expired. The `expires_at` column and the event's
+`truncation.<path>.truncatedAt` timestamp are write-time snapshots kept for
+schema stability; the setting, not those snapshots, decides availability.
+
 ## Retention rules
 
 | Event                                         | Keep                                                                                           | Delete                                                                 |

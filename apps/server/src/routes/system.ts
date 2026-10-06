@@ -307,6 +307,9 @@ export function registerSystemRoutes(
         : undefined;
     const updatedSettings = appSettingsSchema.parse({
       ...settings,
+      completedOutputRetentionDays:
+        settings.completedOutputRetentionDays ??
+        current.completedOutputRetentionDays,
       allowFastServiceTier:
         settings.allowFastServiceTier ?? current.allowFastServiceTier,
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,

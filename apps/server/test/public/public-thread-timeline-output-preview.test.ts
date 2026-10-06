@@ -1,10 +1,15 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { threadEventRowSchema, turnScope } from "@bb/domain";
+import {
+  defaultAppSettings,
+  threadEventRowSchema,
+  turnScope,
+} from "@bb/domain";
 import {
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   events,
   migrateNextLegacyImageGenerationOutput,
+  setAppSettings,
 } from "@bb/db";
 import {
   threadTimelineResponseSchema,
@@ -931,6 +936,71 @@ describe("GET /threads/:id/timeline retained output details", () => {
         experimental_fullOutputAvailability: "retention-expired",
         totalChars: output.length,
       });
+    });
+  });
+
+  it("keeps a retained output available when the setting extends retention", async () => {
+    await withTestHarness(async (harness) => {
+      setAppSettings(harness.db, {
+        ...defaultAppSettings,
+        completedOutputRetentionDays: 365,
+      });
+      const { environment, thread } = seedThreadFixture(harness);
+      const createdAt = Date.now() - COMPLETED_EVENT_OUTPUT_RETENTION_MS - 1;
+      const turn = {
+        environmentId: environment.id,
+        providerThreadId: "provider-extended-retained-details",
+        scope: turnScope("turn-extended-retained-details"),
+        threadId: thread.id,
+      } as const;
+      const output = "extended-" + "e".repeat(50_000);
+      seedEvent(harness.deps, {
+        ...turn,
+        createdAt,
+        data: {},
+        sequence: 1,
+        type: "turn/started",
+      });
+      seedEvent(harness.deps, {
+        ...turn,
+        createdAt,
+        data: {
+          item: {
+            aggregatedOutput: output,
+            approvalStatus: null,
+            command: "cat extended retained details",
+            cwd: "/tmp",
+            exitCode: 0,
+            id: "extended-retained-details-command",
+            status: "completed",
+            type: "commandExecution",
+          },
+        },
+        sequence: 2,
+        type: "item/completed",
+      });
+
+      const timelineRow = findCommandRow(
+        (await getTimeline(harness, thread.id)).rows,
+        "cat extended retained details",
+      );
+      expect(timelineRow.outputPreview).toEqual({
+        experimental_fullOutputAvailability: "available",
+        totalChars: output.length,
+      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=turn-extended-retained-details&sourceSeqStart=2&sourceSeqEnd=2`,
+      );
+      expect(response.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(response),
+      );
+      const detailRow = findCommandRow(
+        details.rows,
+        "cat extended retained details",
+      );
+      expect(detailRow.output).toBe(output);
+      expect(detailRow.outputPreview).toBeUndefined();
     });
   });
 });

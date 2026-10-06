@@ -1,4 +1,5 @@
 import { eq, inArray } from "drizzle-orm";
+import { COMPLETED_EVENT_OUTPUT_RETENTION_MS } from "../retained-event-output.js";
 import {
   aiServiceSelectionSchema,
   AI_TASKS,
@@ -20,11 +21,29 @@ import { appSettingsValues } from "../schema.js";
 const appSettingsKeySchema = appSettingsSchema.keyof();
 const appSettingsKeys = appSettingsKeySchema.options;
 
+const COMPLETED_OUTPUT_RETENTION_DAYS_KEY = "completedOutputRetentionDays";
+const COMPLETED_OUTPUT_RETENTION_DAYS_MS = 24 * 60 * 60_000;
 const KEYBINDING_OVERRIDES_KEY = "keybindingOverrides";
 const AI_SERVICE_SELECTIONS_KEY = "aiServiceSelections";
 const PLUGIN_SAFE_MODE_KEY = "pluginSafeMode";
 const DISABLED_PROVIDER_IDS_KEY = "disabledProviderIds";
 const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
+
+export function getCompletedOutputRetentionMs(
+  db: DbQueryConnection,
+): number {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, COMPLETED_OUTPUT_RETENTION_DAYS_KEY))
+    .get();
+  const parsed = appSettingsSchema.shape.completedOutputRetentionDays.safeParse(
+    row === undefined ? undefined : parseStoredValue(row.value),
+  );
+  return parsed.success
+    ? parsed.data * COMPLETED_OUTPUT_RETENTION_DAYS_MS
+    : COMPLETED_EVENT_OUTPUT_RETENTION_MS;
+}
 
 function parseStoredValue(text: string): unknown {
   try {

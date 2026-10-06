@@ -10,6 +10,7 @@ import {
 } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import {
+  appSettingsSchema,
   builtInThemes,
   defaultAppSettings,
   defaultAppTheme,
@@ -168,6 +169,8 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
+  completedOutputRetentionDays: number | undefined;
+  onCompletedOutputRetentionDaysChange: (days: number) => Promise<void> | void;
   showGitChanges: boolean;
   onShowGitChangesChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
@@ -604,11 +607,18 @@ const FOLLOW_UP_BEHAVIOR_OPTIONS = [
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
 const MANAGED_BRANCH_PREFIX_SETTING_LABEL = "New branch prefix";
 const MANAGED_BRANCH_PREFIX_EXAMPLE_SLUG = "fix-login-flow-thr_ab12cd34ef";
+const FULL_OUTPUT_RETENTION_SETTING_LABEL = "Full output retention";
 
 interface ManagedBranchPrefixSettingProps {
   disabled: boolean;
   onChange: (prefix: string) => Promise<void> | void;
   value: string;
+}
+
+interface FullOutputRetentionSettingProps {
+  disabled: boolean;
+  onChange: (days: number) => Promise<void> | void;
+  value: number;
 }
 
 function ManagedBranchPrefixSetting({
@@ -668,6 +678,78 @@ function ManagedBranchPrefixSetting({
           if (event.key === "Escape") {
             event.preventDefault();
             setDraft(value);
+          }
+        }}
+      />
+    </SettingsWithControl>
+  );
+}
+
+function FullOutputRetentionSetting({
+  disabled,
+  onChange,
+  value,
+}: FullOutputRetentionSettingProps) {
+  const [draft, setDraft] = useState(String(value));
+  const [committedValue, setCommittedValue] = useState(value);
+  if (value !== committedValue) {
+    setCommittedValue(value);
+    setDraft(String(value));
+  }
+
+  const parsedDraft = /^\d+$/.test(draft.trim())
+    ? appSettingsSchema.shape.completedOutputRetentionDays.safeParse(
+        Number(draft.trim()),
+      )
+    : null;
+  const valid = parsedDraft !== null && parsedDraft.success;
+  const commit = () => {
+    if (parsedDraft === null || !parsedDraft.success) {
+      setDraft(String(value));
+      return;
+    }
+    if (parsedDraft.data !== value) {
+      void Promise.resolve(onChange(parsedDraft.data)).catch(() =>
+        setDraft(String(value)),
+      );
+    }
+  };
+
+  return (
+    <SettingsWithControl
+      label={FULL_OUTPUT_RETENTION_SETTING_LABEL}
+      description={
+        valid ? (
+          "How long full command and tool outputs stay retrievable in older threads."
+        ) : (
+          <span className="text-destructive" role="alert">
+            Enter a whole number of days from 1 to 3650.
+          </span>
+        )
+      }
+      controlPlacement="below"
+    >
+      <Input
+        value={draft}
+        aria-label={FULL_OUTPUT_RETENTION_SETTING_LABEL}
+        aria-invalid={!valid}
+        disabled={disabled}
+        inputMode="numeric"
+        placeholder="7"
+        className={cn(
+          "h-8 font-mono text-xs",
+          !valid && "border-destructive focus-visible:ring-destructive",
+        )}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setDraft(String(value));
           }
         }}
       />
@@ -852,6 +934,8 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  completedOutputRetentionDays,
+  onCompletedOutputRetentionDaysChange,
   showGitChanges,
   onShowGitChangesChange,
   confirmThreadArchive,
@@ -962,6 +1046,14 @@ export function GeneralSettingsSection({
               aria-label="Thread archive confirmation"
             />
           </SettingsWithControl>
+
+          {completedOutputRetentionDays !== undefined ? (
+            <FullOutputRetentionSetting
+              value={completedOutputRetentionDays}
+              disabled={generalSettingsDisabled}
+              onChange={onCompletedOutputRetentionDaysChange}
+            />
+          ) : null}
         </div>
       </SettingsSection>
       {desktopBrowserAvailable || localhostRewriteDescription !== null ? (
@@ -1307,6 +1399,15 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          completedOutputRetentionDays={
+            generalSettings.completedOutputRetentionDays
+          }
+          onCompletedOutputRetentionDaysChange={async (days) => {
+            await updateGeneralSettingsMutation.mutateAsync({
+              ...generalSettings,
+              completedOutputRetentionDays: days,
+            });
+          }}
           showGitChanges={generalSettings.showGitChanges}
           onShowGitChangesChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
