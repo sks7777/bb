@@ -618,7 +618,7 @@ interface ManagedBranchPrefixSettingProps {
 interface FullOutputRetentionSettingProps {
   disabled: boolean;
   onChange: (days: number) => Promise<void> | void;
-  value: number | undefined;
+  value: number;
 }
 
 function ManagedBranchPrefixSetting({
